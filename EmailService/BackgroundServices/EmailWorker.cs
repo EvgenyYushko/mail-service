@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Collections;
+using System.Text;
 using System.Text.Json;
 using EmailService.ServiceLayer.Models;
 using EmailService.ServiceLayer.Services;
@@ -20,6 +21,8 @@ namespace EmailService.BackgroundServices
 
 		protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 		{
+			Console.WriteLine($"Запуск");
+
 			var factory = new ConnectionFactory()
 			{
 				Uri = new Uri(_rabbitUrl)
@@ -51,7 +54,6 @@ namespace EmailService.BackgroundServices
 					var json = Encoding.UTF8.GetString(ea.Body.Span);
 					var message = JsonSerializer.Deserialize<MailMessageDto>(json);
 
-					//var body = HtmlHelper.GetWeeklyReportHtml("много", 2, 3, 4, 5, "cahts", 6, 7, 8, 9, "aaa", "dsds");
 					await _emailService.Send(message.Email, message.Body, message.Theme, message.IsBodyHtml, message.CopyAddress);
 
 					Console.WriteLine($"Отправлено: {message.Email}");
@@ -61,19 +63,37 @@ namespace EmailService.BackgroundServices
 						multiple: false
 					);
 				}
-				catch (Exception ex)
+				catch (JsonException ex)
 				{
-					Console.WriteLine($"Ошибка: {ex.Message}");
+					Console.WriteLine($"Ошибка десериализации: {ex.Message}");
+					// Если сообщение битое - нет смысла его пересылать
+					await channel.BasicNackAsync(
+						deliveryTag: ea.DeliveryTag,
+						multiple: false,
+						requeue: false // не возвращаем в очередь
+					);
+				}
+				catch (Exception ex) when (IsTransientError(ex))
+				{
+					Console.WriteLine($"Временная ошибка: {ex.Message}");
 
-					if (ea.DeliveryTag == 5)
-					{
-						return;
-					}
+					// Добавляем задержку перед повторной попыткой
+					await Task.Delay(GetDelayMilliseconds(ea.Redelivered));
 
 					await channel.BasicNackAsync(
 						deliveryTag: ea.DeliveryTag,
 						multiple: false,
-						requeue: true
+						requeue: true // возвращаем в очередь для повторной попытки
+					);
+				}
+				catch (Exception ex)
+				{
+					Console.WriteLine($"Критическая ошибка: {ex.Message}");
+					// Для неисправимых ошибок не возвращаем сообщение в очередь
+					await channel.BasicNackAsync(
+						deliveryTag: ea.DeliveryTag,
+						multiple: false,
+						requeue: false
 					);
 				}
 			};
@@ -87,6 +107,23 @@ namespace EmailService.BackgroundServices
 
 			Console.WriteLine("Worker запущен. Ожидание писем...");
 			await Task.Delay(Timeout.Infinite); // Бесконечное ожидание
+		}
+
+		// Вспомогательные методы
+		private static bool IsTransientError(Exception ex)
+		{
+			// Определяем, является ли ошибка временной (например, таймаут сети)
+			return ex is TimeoutException or IOException;
+		}
+
+		private static int GetDelayMilliseconds(bool isRedelivered)
+		{
+			// Экспоненциальная задержка: 5 сек при первой ошибке, 20 сек при второй и т.д.
+			const int baseDelay = 5000;
+			const int maxDelay = 300000; // 5 минут
+			var attempts = isRedelivered ? 2 : 1;
+			var delay = (int)Math.Min(baseDelay * Math.Pow(4, attempts - 1), maxDelay);
+			return delay;
 		}
 	}
 }

@@ -18,7 +18,7 @@ builder.Services.AddSingleton(mailOption);
 
 builder.Services.AddSingleton(new RabbitOptions
 {
-	Url = builder.Configuration.GetValue<string>("RABBIT_MAIL_URL") ?? Environment.GetEnvironmentVariable("RABBIT_MAIL_URL")
+	Url = builder.Configuration.GetValue<string>("RABBIT_URL") ?? Environment.GetEnvironmentVariable("RABBIT_URL")
 });
 
 builder.Services.AddSingleton<IEmailService, EmailService.BuisinessLogic.EmailService>();
