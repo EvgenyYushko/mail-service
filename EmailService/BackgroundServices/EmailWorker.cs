@@ -16,10 +16,13 @@ namespace EmailService.BackgroundServices
 		{
 			_emailService = emailService;
 			_rabbitUrl = rabbitOptions.Url;
+			Console.WriteLine($"Создано");
 		}
 
 		protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 		{
+			Console.WriteLine($"Запуск");
+
 			var factory = new ConnectionFactory()
 			{
 				Uri = new Uri(_rabbitUrl)
