@@ -64,6 +64,12 @@ namespace EmailService.BackgroundServices
 				catch (Exception ex)
 				{
 					Console.WriteLine($"Ошибка: {ex.Message}");
+
+					if (ea.DeliveryTag == 5)
+					{
+						return;
+					}
+
 					await channel.BasicNackAsync(
 						deliveryTag: ea.DeliveryTag,
 						multiple: false,
