@@ -23,6 +23,7 @@ builder.Services.AddSingleton(new RabbitOptions
 
 builder.Services.AddSingleton<IEmailService, EmailService.BuisinessLogic.EmailService>();
 builder.Services.AddHostedService<EmailWorker>();
+builder.Services.AddHostedService<HealthCheckBackgroundService>();
 
 var app = builder.Build();
 
